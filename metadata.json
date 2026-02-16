@@ -1,0 +1,7 @@
+{
+  "name": "FlashEdit - AI Image Studio",
+  "description": "A high-end AI image editing suite powered by Gemini 2.5 Flash, offering intelligent image manipulation and AI-driven prompt suggestions.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
