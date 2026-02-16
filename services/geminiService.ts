@@ -3,7 +3,13 @@ import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { PromptSuggestion } from "../types";
 
 // Helper to initialize the client with the environment key
-const getAIClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const getAIClient = () => {
+  const apiKey = process.env.API_KEY || '';
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is not configured. Please add it to your .env.local file.');
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 /**
  * Utility to strip data URL prefix if present
@@ -37,8 +43,8 @@ export const editImage = async (
   prompt: string
 ): Promise<string | null> => {
   const ai = getAIClient();
-  // Using gemini-2.5-flash-image for high-quality general image editing tasks
-  const model = 'gemini-2.5-flash-image';
+  // Using gemini-2.5-flash for multimodal capabilities
+  const model = 'models/gemini-2.5-flash';
   
   try {
     const response: GenerateContentResponse = await ai.models.generateContent({
@@ -58,17 +64,36 @@ export const editImage = async (
       },
     });
 
-    if (!response.candidates?.[0]?.content?.parts) return null;
+    if (!response.candidates?.[0]?.content?.parts) {
+      throw new Error('No response received from Gemini API');
+    }
 
+    // Check if image was generated
     for (const part of response.candidates[0].content.parts) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
-    return null;
+
+    // Gemini models don't support image generation - provide helpful error
+    throw new Error(
+      'Image generation is not supported by Gemini models. ' +
+      'Gemini can analyze images but cannot create or edit them. ' +
+      'To add image generation, you would need to integrate with Imagen API or another image generation service.'
+    );
   } catch (error: any) {
     console.error("Gemini Image Edit Error:", error);
-    throw error;
+
+    // Provide more helpful error messages
+    if (error?.message?.includes('API key')) {
+      throw new Error('Invalid API key. Please check your GEMINI_API_KEY in .env.local');
+    } else if (error?.message?.includes('quota')) {
+      throw new Error('API quota exceeded. Please check your Google AI Studio quota.');
+    } else if (error?.message?.includes('not found') || error?.message?.includes('404')) {
+      throw new Error('Model not available. The image generation feature may not be enabled for your API key.');
+    } else {
+      throw new Error(error?.message || 'Failed to generate image. Please try again.');
+    }
   }
 };
 
@@ -79,9 +104,9 @@ export const getPromptSuggestions = async (
   const ai = getAIClient();
   
   const fetchSuggestions = async () => {
-    // gemini-3-flash-preview is excellent for multimodal analysis and JSON generation
+    // gemini-2.5-flash is excellent for multimodal analysis and JSON generation
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "models/gemini-2.5-flash",
       contents: {
         parts: [
           {
@@ -126,8 +151,10 @@ export const getPromptSuggestions = async (
 
   try {
     return await callWithRetry(fetchSuggestions);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Suggestion Error after retries:", error);
+    // Return empty array on error so app continues to work
+    // User can still type their own prompt
     return [];
   }
 };
